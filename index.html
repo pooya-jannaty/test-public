@@ -1,0 +1,245 @@
+<style>
+details { 
+    summary {
+        font-size: 18px; 
+        color: blue
+    }
+    margin-left: 10px;
+}
+details {
+    summary.h3 {
+        font-size: 16px; 
+        color: blue;
+    }
+    margin-left: 20px;
+}
+</style>
+<h1 id="transfer1-code-walkthrough">Transfer1 Code Walkthrough</h1>
+<h2 id="config-system">Config System</h2>
+<details>
+<summary>
+Concept: Lazy calls
+</summary>
+<p>Using OmegaConf’s DictConfig for lazy calling in PyTorch provides a
+clean, modular, and dynamic way to define and instantiate models,
+optimizers and datasets.</p>
+<ul>
+<li>You define <strong>what</strong> to instantiate in your config.</li>
+<li>You <strong>don’t instantiate</strong> it immediately.</li>
+<li>Later, at runtime, you call a function like
+hydra.utils.instantiate(cfg) to create the actual object.</li>
+</ul>
+<p>This gives you separation of <strong>declaration</strong> (in config)
+vs. <em>execution</em> (in code)</p>
+<p><code>LazyDict</code> is actually an alias for
+<code>DictConfig</code> from the omegaconf library. Lazy calls,
+especially as used in conjunction with <code>DictConfig</code> and
+Hydra/OmegaConf, provide a powerful way to delay instantiation of
+objects (like models, optimizers, datasets) until the actual runtime,
+rather than when the config is parsed. Here’s an example:</p>
+<p>YAML config:</p>
+<div class="sourceCode" id="cb1"><pre
+class="sourceCode yaml"><code class="sourceCode yaml"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="fu">model</span><span class="kw">:</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">_target_</span><span class="kw">:</span><span class="at"> mymodule.models.ResNet</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">depth</span><span class="kw">:</span><span class="at"> </span><span class="dv">50</span></span></code></pre></div>
+<p>Python code:</p>
+<div class="sourceCode" id="cb2"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> hydra.utils <span class="im">import</span> instantiate</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>model <span class="op">=</span> instantiate(cfg.model)</span></code></pre></div>
+No need to import or instantiate the model inside the config—just
+describe it.
+</details>
+<details>
+<summary>
+Primer: Hydra
+</summary>
+<p>We use <a href="https://hydra.cc/docs/intro/">Hydra</a> for advanced
+configuration composition and overriding. Here’s a primer:</p>
+<ul>
+<li>Hydra lets you categorize your configs by <code>group</code>s.
+<ul>
+<li>Each option in a group is identified by its <code>name</code>.</li>
+<li>Much like radio buttons, you can only select/activate one
+<code>name</code> in each <code>group</code>.</li>
+</ul></li>
+<li><code>node</code> specifies the config class type for each
+<code>name</code>.</li>
+<li>Once you select one <code>name</code> in each <code>group</code>,
+Hydra will copy over the contents of the selected configs and put them
+under the path indicated by <code>package</code>.</li>
+</ul>
+<p>Here’s an example to concretize the concepts of <code>group</code>,
+<code>name</code>, <code>node</code> and <code>package</code>. Imagine
+you have these dataclasses:</p>
+<div class="sourceCode" id="cb3"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="at">@attr.define</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="kw">class</span> UnetConfig:</span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>    channels: <span class="bu">int</span> <span class="op">=</span> <span class="dv">64</span></span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a>    num_blocks: <span class="bu">int</span> <span class="op">=</span> <span class="dv">4</span></span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a><span class="at">@attr.define</span></span>
+<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a><span class="kw">class</span> ViTConfig:</span>
+<span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a>    hidden_dim: <span class="bu">int</span> <span class="op">=</span> <span class="dv">512</span></span>
+<span id="cb3-9"><a href="#cb3-9" aria-hidden="true" tabindex="-1"></a>    depth: <span class="bu">int</span> <span class="op">=</span> <span class="dv">6</span></span></code></pre></div>
+<p>This is how you register them into Hydra’s config system:</p>
+<div class="sourceCode" id="cb4"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> hydra.core.config_store <span class="im">import</span> ConfigStore</span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>cs <span class="op">=</span> ConfigStore.instance()</span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a><span class="co"># Register Unet under the &#39;net&#39; group.</span></span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a>cs.store(</span>
+<span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a>    group<span class="op">=</span><span class="st">&quot;net&quot;</span>,</span>
+<span id="cb4-8"><a href="#cb4-8" aria-hidden="true" tabindex="-1"></a>    name<span class="op">=</span><span class="st">&quot;unet&quot;</span>,</span>
+<span id="cb4-9"><a href="#cb4-9" aria-hidden="true" tabindex="-1"></a>    node<span class="op">=</span>UnetConfig,</span>
+<span id="cb4-10"><a href="#cb4-10" aria-hidden="true" tabindex="-1"></a>    package<span class="op">=</span><span class="st">&quot;model&quot;</span></span>
+<span id="cb4-11"><a href="#cb4-11" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb4-12"><a href="#cb4-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-13"><a href="#cb4-13" aria-hidden="true" tabindex="-1"></a><span class="co"># Register ViT under the same group.</span></span>
+<span id="cb4-14"><a href="#cb4-14" aria-hidden="true" tabindex="-1"></a>cs.store(</span>
+<span id="cb4-15"><a href="#cb4-15" aria-hidden="true" tabindex="-1"></a>    group<span class="op">=</span><span class="st">&quot;net&quot;</span>,</span>
+<span id="cb4-16"><a href="#cb4-16" aria-hidden="true" tabindex="-1"></a>    name<span class="op">=</span><span class="st">&quot;vit&quot;</span>,</span>
+<span id="cb4-17"><a href="#cb4-17" aria-hidden="true" tabindex="-1"></a>    node<span class="op">=</span>ViTConfig,</span>
+<span id="cb4-18"><a href="#cb4-18" aria-hidden="true" tabindex="-1"></a>    package<span class="op">=</span><span class="st">&quot;model.net&quot;</span> <span class="co"># Paths can be nested.</span></span>
+<span id="cb4-19"><a href="#cb4-19" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div>
+<p>Now if you select <code>unet</code> as the default config, like
+so</p>
+<div class="sourceCode" id="cb5"><pre
+class="sourceCode yaml"><code class="sourceCode yaml"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="fu">defaults</span><span class="kw">:</span></span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">net</span><span class="kw">:</span><span class="at"> unet</span></span></code></pre></div>
+<p>Hydra will put the contents of <code>UnetConfig</code> under the path
+<code>model</code> and compose the final configuration as follows.</p>
+<div class="sourceCode" id="cb6"><pre
+class="sourceCode yaml"><code class="sourceCode yaml"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="fu">model</span><span class="kw">:</span></span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">channels</span><span class="kw">:</span><span class="at"> </span><span class="dv">64</span></span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">num_blocks</span><span class="kw">:</span><span class="at"> </span><span class="dv">4</span></span></code></pre></div>
+<p>Conversely, if you select <code>vit</code>, the final config that
+Hydra will compose will look like:</p>
+<div class="sourceCode" id="cb7"><pre
+class="sourceCode yaml"><code class="sourceCode yaml"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="fu">model</span><span class="kw">:</span></span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">net</span><span class="kw">:</span></span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a><span class="at">        </span><span class="fu">hidden_dim</span><span class="kw">:</span><span class="at"> </span><span class="dv">512</span></span>
+<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a><span class="at">        </span><span class="fu">depth</span><span class="kw">:</span><span class="at"> </span><span class="dv">6</span></span></code></pre></div>
+<details>
+<summary class="h3">
+What is the <code>_self_</code> field anyway?
+</summary>
+<p><code>_self_</code> will insert the current file’s fields (outside
+defaults) at its position, and since later fields override earlier ones,
+we can use it to control the override precedence. Consider the
+example</p>
+<div class="sourceCode" id="cb8"><pre
+class="sourceCode yaml"><code class="sourceCode yaml"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="fu">defaults</span><span class="kw">:</span></span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">net</span><span class="kw">:</span><span class="at"> unet</span></span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a><span class="at">    _self_</span></span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">model.num_blocks</span><span class="kw">:</span><span class="at"> </span><span class="dv">8</span></span></code></pre></div>
+<p>This will result in the config</p>
+<div class="sourceCode" id="cb9"><pre
+class="sourceCode yaml"><code class="sourceCode yaml"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="fu">model</span><span class="kw">:</span></span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">channels</span><span class="kw">:</span><span class="at"> </span><span class="dv">64</span></span>
+<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">num_blocks</span><span class="kw">:</span><span class="at"> </span><span class="dv">8</span></span></code></pre></div>
+<p>whereas</p>
+<div class="sourceCode" id="cb10"><pre
+class="sourceCode yaml"><code class="sourceCode yaml"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="fu">defaults</span><span class="kw">:</span></span>
+<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a><span class="at">    _self_</span></span>
+<span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">net</span><span class="kw">:</span><span class="at"> unet</span></span>
+<span id="cb10-4"><a href="#cb10-4" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">model.num_blocks</span><span class="kw">:</span><span class="at"> </span><span class="dv">8</span></span></code></pre></div>
+<p>would have not changed the default, as it would be equivalent to</p>
+<div class="sourceCode" id="cb11"><pre
+class="sourceCode yaml"><code class="sourceCode yaml"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a><span class="fu">model</span><span class="kw">:</span></span>
+<span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">num_blocks</span><span class="kw">:</span><span class="at"> </span><span class="dv">8</span></span>
+<span id="cb11-3"><a href="#cb11-3" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">channels</span><span class="kw">:</span><span class="at"> </span><span class="dv">64</span></span>
+<span id="cb11-4"><a href="#cb11-4" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">num_blocks</span><span class="kw">:</span><span class="at"> </span><span class="dv">4</span></span></code></pre></div>
+<p>but because later variables override earlier ones,
+<code>num_blocks: 8</code> would not have taken effect.</p>
+</details>
+</details>
+<details>
+<summary>
+Concept: Hydra + attrs
+</summary>
+<p>Hydra commonly pais with YAML config files. In this codebase however,
+instead of pairing Hydra with YAML, we opted for pairing it with a
+Python-based structured config class using <code>attrs</code>.</p>
+<p>So for example, instead of</p>
+<div class="sourceCode" id="cb12"><pre
+class="sourceCode yaml"><code class="sourceCode yaml"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a><span class="fu">defaults</span><span class="kw">:</span></span>
+<span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a><span class="at">    _self_</span></span>
+<span id="cb12-3"><a href="#cb12-3" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">data_train</span><span class="kw">:</span><span class="at"> </span><span class="ch">null</span></span>
+<span id="cb12-4"><a href="#cb12-4" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">data_val</span><span class="kw">:</span><span class="at"> </span><span class="ch">null</span></span>
+<span id="cb12-5"><a href="#cb12-5" aria-hidden="true" tabindex="-1"></a><span class="at">    ...</span></span></code></pre></div>
+<p>we do</p>
+<div class="sourceCode" id="cb13"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a><span class="at">@attrs.define</span>(slots<span class="op">=</span><span class="va">False</span>)</span>
+<span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a><span class="kw">class</span> Config(config.Config):</span>
+<span id="cb13-3"><a href="#cb13-3" aria-hidden="true" tabindex="-1"></a>    defaults: List[Any] <span class="op">=</span> attrs.field(</span>
+<span id="cb13-4"><a href="#cb13-4" aria-hidden="true" tabindex="-1"></a>        factory<span class="op">=</span><span class="kw">lambda</span>: [</span>
+<span id="cb13-5"><a href="#cb13-5" aria-hidden="true" tabindex="-1"></a>            <span class="st">&quot;_self_&quot;</span>,</span>
+<span id="cb13-6"><a href="#cb13-6" aria-hidden="true" tabindex="-1"></a>            {<span class="st">&quot;data_train&quot;</span>: <span class="va">None</span>},</span>
+<span id="cb13-7"><a href="#cb13-7" aria-hidden="true" tabindex="-1"></a>            {<span class="st">&quot;data_val&quot;</span>: <span class="va">None</span>},</span>
+<span id="cb13-8"><a href="#cb13-8" aria-hidden="true" tabindex="-1"></a>            ...</span>
+<span id="cb13-9"><a href="#cb13-9" aria-hidden="true" tabindex="-1"></a>        ]</span>
+<span id="cb13-10"><a href="#cb13-10" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div>
+<ul>
+<li>The pattern <code>attrs.field(factory=lambda: ...)</code> is a
+common way for indicating the default value for mutable fields,
+e.g. lists.</li>
+<li>Had we done somthing like <code>attrs.field(["_self_", ...])</code>,
+we would run into trouble when instantiating more than one
+<code>Config</code> object as now the list would be shared between all
+objects.</li>
+</ul>
+</details>
+<details>
+<summary>
+Cosmos Training Config
+</summary>
+<p>Cosmos configs are registered at <code>register_configs()</code>.</p>
+<p><code>cosmos_transfer1/utils/config.py</code> defines the base config
+class:</p>
+<div class="sourceCode" id="cb14"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a><span class="kw">class</span> Config:</span>
+<span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a>    model: LazyDict</span>
+<span id="cb14-3"><a href="#cb14-3" aria-hidden="true" tabindex="-1"></a>    optimizer: LazyDict</span>
+<span id="cb14-4"><a href="#cb14-4" aria-hidden="true" tabindex="-1"></a>    scheduler: LazyDict</span>
+<span id="cb14-5"><a href="#cb14-5" aria-hidden="true" tabindex="-1"></a>    dataloader_train: LazyDict</span>
+<span id="cb14-6"><a href="#cb14-6" aria-hidden="true" tabindex="-1"></a>    dataloader_val: LazyDict</span>
+<span id="cb14-7"><a href="#cb14-7" aria-hidden="true" tabindex="-1"></a>    job: JobConfig</span>
+<span id="cb14-8"><a href="#cb14-8" aria-hidden="true" tabindex="-1"></a>    trainer: TrainerConfig</span>
+<span id="cb14-9"><a href="#cb14-9" aria-hidden="true" tabindex="-1"></a>    checkpoint: CheckpointConfig</span></code></pre></div>
+<p><code>cosmos_transfer1/diffusion/config/config_train.py</code>
+actually sets the default values for the base class:</p>
+<div class="sourceCode" id="cb15"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a><span class="kw">class</span> Config(config.Config):</span>
+<span id="cb15-2"><a href="#cb15-2" aria-hidden="true" tabindex="-1"></a>    defaults: List[Any] <span class="op">=</span> attrs.field(</span>
+<span id="cb15-3"><a href="#cb15-3" aria-hidden="true" tabindex="-1"></a>        factory<span class="op">=</span><span class="kw">lambda</span>: [</span>
+<span id="cb15-4"><a href="#cb15-4" aria-hidden="true" tabindex="-1"></a>            <span class="st">&quot;_self_&quot;</span>,</span>
+<span id="cb15-5"><a href="#cb15-5" aria-hidden="true" tabindex="-1"></a>            {<span class="st">&quot;data_train&quot;</span>: <span class="va">None</span>},</span>
+<span id="cb15-6"><a href="#cb15-6" aria-hidden="true" tabindex="-1"></a>            {<span class="st">&quot;data_val&quot;</span>: <span class="va">None</span>},</span>
+<span id="cb15-7"><a href="#cb15-7" aria-hidden="true" tabindex="-1"></a>            {<span class="st">&quot;optimizer&quot;</span>: <span class="st">&quot;fusedadamw&quot;</span>},</span>
+<span id="cb15-8"><a href="#cb15-8" aria-hidden="true" tabindex="-1"></a>            {<span class="st">&quot;scheduler&quot;</span>: <span class="st">&quot;lambdalinear&quot;</span>},</span>
+<span id="cb15-9"><a href="#cb15-9" aria-hidden="true" tabindex="-1"></a>            {<span class="st">&quot;callbacks&quot;</span>: <span class="va">None</span>},</span>
+<span id="cb15-10"><a href="#cb15-10" aria-hidden="true" tabindex="-1"></a>            <span class="co">#</span></span>
+<span id="cb15-11"><a href="#cb15-11" aria-hidden="true" tabindex="-1"></a>            {<span class="st">&quot;net&quot;</span>: <span class="va">None</span>},</span>
+<span id="cb15-12"><a href="#cb15-12" aria-hidden="true" tabindex="-1"></a>            {<span class="st">&quot;net_ctrl&quot;</span>: <span class="va">None</span>},</span>
+<span id="cb15-13"><a href="#cb15-13" aria-hidden="true" tabindex="-1"></a>            {<span class="st">&quot;hint_key&quot;</span>: <span class="st">&quot;control_input_edge&quot;</span>},</span>
+<span id="cb15-14"><a href="#cb15-14" aria-hidden="true" tabindex="-1"></a>            {<span class="st">&quot;conditioner&quot;</span>: <span class="st">&quot;ctrlnet_add_fps_image_size_padding_mask&quot;</span>},</span>
+<span id="cb15-15"><a href="#cb15-15" aria-hidden="true" tabindex="-1"></a>            {<span class="st">&quot;pixel_corruptor&quot;</span>: <span class="va">None</span>},</span>
+<span id="cb15-16"><a href="#cb15-16" aria-hidden="true" tabindex="-1"></a>            {<span class="st">&quot;fsdp&quot;</span>: <span class="va">None</span>},</span>
+<span id="cb15-17"><a href="#cb15-17" aria-hidden="true" tabindex="-1"></a>            {<span class="st">&quot;ema&quot;</span>: <span class="st">&quot;power&quot;</span>},</span>
+<span id="cb15-18"><a href="#cb15-18" aria-hidden="true" tabindex="-1"></a>            {<span class="st">&quot;checkpoint&quot;</span>: <span class="st">&quot;local&quot;</span>},</span>
+<span id="cb15-19"><a href="#cb15-19" aria-hidden="true" tabindex="-1"></a>            {<span class="st">&quot;ckpt_klass&quot;</span>: <span class="st">&quot;multi_rank&quot;</span>},</span>
+<span id="cb15-20"><a href="#cb15-20" aria-hidden="true" tabindex="-1"></a>            {<span class="st">&quot;tokenizer&quot;</span>: <span class="st">&quot;vae1&quot;</span>},</span>
+<span id="cb15-21"><a href="#cb15-21" aria-hidden="true" tabindex="-1"></a>            <span class="co"># the list is with order, we need global experiment to be the last one</span></span>
+<span id="cb15-22"><a href="#cb15-22" aria-hidden="true" tabindex="-1"></a>            {<span class="st">&quot;experiment&quot;</span>: <span class="va">None</span>},</span>
+<span id="cb15-23"><a href="#cb15-23" aria-hidden="true" tabindex="-1"></a>        ]</span>
+<span id="cb15-24"><a href="#cb15-24" aria-hidden="true" tabindex="-1"></a>    )</span>
+<span id="cb15-25"><a href="#cb15-25" aria-hidden="true" tabindex="-1"></a>    model_obj: LazyDict <span class="op">=</span> L(VideoDiffusionModelWithCtrl)(</span>
+<span id="cb15-26"><a href="#cb15-26" aria-hidden="true" tabindex="-1"></a>        config<span class="op">=</span>PLACEHOLDER,</span>
+<span id="cb15-27"><a href="#cb15-27" aria-hidden="true" tabindex="-1"></a>    )</span>
+<span id="cb15-28"><a href="#cb15-28" aria-hidden="true" tabindex="-1"></a>    checkpoint: CheckpointConfig <span class="op">=</span> attrs.field(factory<span class="op">=</span>CheckpointConfig)</span></code></pre></div>
+</details>
+<h2 id="train.py">Train.py</h2>
+<h2 id="ema">EMA</h2>
+<h2 id="dit-blocks">DiT Blocks</h2>
+<h2 id="control-blocks">Control Blocks</h2>
